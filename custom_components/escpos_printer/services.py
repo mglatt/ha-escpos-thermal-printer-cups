@@ -33,6 +33,7 @@ from .const import (
     ATTR_HEIGHT,
     ATTR_HIGH_DENSITY,
     ATTR_IMAGE,
+    ATTR_IMPL,
     ATTR_LINES,
     ATTR_MODE,
     ATTR_POS,
@@ -317,6 +318,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: PLR0915
                     align=call.data.get(ATTR_ALIGN, defaults.get("align")),
                     cut=call.data.get(ATTR_CUT, defaults.get("cut")),
                     feed=call.data.get(ATTR_FEED),
+                    impl=call.data.get(ATTR_IMPL),
                 )
             except Exception as err:
                 _LOGGER.exception("Service print_image failed for entry %s", entry.entry_id)

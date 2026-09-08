@@ -25,16 +25,20 @@ from .const import (
     CONF_CUPS_SERVER,
     CONF_DEFAULT_ALIGN,
     CONF_DEFAULT_CUT,
+    CONF_IMPL,
     CONF_LINE_WIDTH,
     CONF_PRINTER_NAME,
     CONF_PROFILE,
     CONF_STATUS_INTERVAL,
     CONF_TIMEOUT,
+    CONF_WIDTH_PIXELS,
     DEFAULT_ALIGN,
     DEFAULT_CUT,
     DEFAULT_LINE_WIDTH,
     DEFAULT_TIMEOUT,
     DOMAIN,
+    IMPL_AUTO,
+    IMPL_CHOICE_LABELS,
 )
 from .printer import (
     CupsError,
@@ -232,6 +236,15 @@ class EscposConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             codepage = user_input.get(CONF_CODEPAGE, "")
             line_width = user_input.get(CONF_LINE_WIDTH)
 
+            # Image settings flow into every create path (including the
+            # custom codepage/line-width detours) via _user_data. "Auto"
+            # impl and an empty width mean "follow the profile" and are
+            # simply not stored.
+            if user_input.get(CONF_IMPL) in IMPL_CHOICE_LABELS and user_input[CONF_IMPL] != IMPL_AUTO:
+                self._user_data[CONF_IMPL] = user_input[CONF_IMPL]
+            if user_input.get(CONF_WIDTH_PIXELS):
+                self._user_data[CONF_WIDTH_PIXELS] = int(user_input[CONF_WIDTH_PIXELS])
+
             # Handle custom codepage
             if codepage == OPTION_CUSTOM:
                 # Store current selections and go to custom codepage step
@@ -312,6 +325,10 @@ class EscposConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ["left", "center", "right"]
                 ),
                 vol.Optional(CONF_DEFAULT_CUT, default=DEFAULT_CUT): vol.In(cut_choices),
+                vol.Optional(CONF_IMPL, default=IMPL_AUTO): vol.In(IMPL_CHOICE_LABELS),
+                vol.Optional(CONF_WIDTH_PIXELS): vol.All(
+                    vol.Coerce(int), vol.Range(min=16, max=2048)
+                ),
             }
         )
 
@@ -498,6 +515,11 @@ class EscposOptionsFlowHandler(config_entries.OptionsFlow):
                 user_input,
             )
 
+            # A cleared width field is omitted from user_input entirely;
+            # store an explicit None so the override actually clears
+            # instead of resurrecting from the previously saved options.
+            user_input.setdefault(CONF_WIDTH_PIXELS, None)
+
             # Check for custom options
             profile = user_input.get(CONF_PROFILE)
             codepage = user_input.get(CONF_CODEPAGE)
@@ -584,6 +606,23 @@ class EscposOptionsFlowHandler(config_entries.OptionsFlow):
         )
         cut_choices = {m: m.title() for m in cut_modes}
 
+        # Image settings
+        current_impl = self.config_entry.options.get(
+            CONF_IMPL, self.config_entry.data.get(CONF_IMPL, IMPL_AUTO)
+        )
+        if current_impl not in IMPL_CHOICE_LABELS:
+            current_impl = IMPL_AUTO
+        current_width_px = self.config_entry.options.get(
+            CONF_WIDTH_PIXELS, self.config_entry.data.get(CONF_WIDTH_PIXELS)
+        )
+        # Only prefill the width box when an override is stored; an empty
+        # box means "profile default".
+        width_px_field = (
+            vol.Optional(CONF_WIDTH_PIXELS, default=int(current_width_px))
+            if current_width_px
+            else vol.Optional(CONF_WIDTH_PIXELS)
+        )
+
         # Ensure current cut mode is in choices
         current_cut = self.config_entry.options.get(
             CONF_DEFAULT_CUT
@@ -616,6 +655,8 @@ class EscposOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ): vol.In(["left", "center", "right"]),
                 vol.Optional(CONF_DEFAULT_CUT, default=current_cut): vol.In(cut_choices),
+                vol.Optional(CONF_IMPL, default=current_impl): vol.In(IMPL_CHOICE_LABELS),
+                width_px_field: vol.All(vol.Coerce(int), vol.Range(min=16, max=2048)),
                 vol.Optional(
                     CONF_STATUS_INTERVAL,
                     default=self.config_entry.options.get(CONF_STATUS_INTERVAL, 0),

@@ -33,13 +33,17 @@
           "codepage": "Character encoding",
           "line_width": "Characters per line",
           "default_align": "Default alignment",
-          "default_cut": "Default cut mode"
+          "default_cut": "Default cut mode",
+          "impl": "Image implementation",
+          "width_pixels": "Image width override (dots)"
         },
         "data_description": {
           "codepage": "Character encoding/codepage for text. Choose 'Custom' to enter a codepage manually.",
           "line_width": "Number of characters per line (columns). Choose 'Custom' to enter a value manually.",
           "default_align": "Default text alignment for printing.",
-          "default_cut": "Default paper cut mode after printing."
+          "default_cut": "Default paper cut mode after printing.",
+          "impl": "ESC/POS image command family. 'Auto' follows the printer profile; pick Raster or Column manually if images print garbled or not at all.",
+          "width_pixels": "Maximum image width in printer dots (e.g. 384, 512, 576). Leave empty to use the profile's declared width."
         }
       },
       "custom_profile": {
@@ -96,6 +100,8 @@
           "line_width": "Characters per line",
           "default_align": "Default alignment",
           "default_cut": "Default cut mode",
+          "impl": "Image implementation",
+          "width_pixels": "Image width override (dots)",
           "status_interval": "Status check interval (seconds)"
         },
         "data_description": {
@@ -105,6 +111,8 @@
           "line_width": "Number of characters per line (columns).",
           "default_align": "Default text alignment for printing.",
           "default_cut": "Default paper cut mode after printing.",
+          "impl": "ESC/POS image command family. 'Auto' follows the printer profile; pick Raster or Column manually if images print garbled or not at all.",
+          "width_pixels": "Maximum image width in printer dots (e.g. 384, 512, 576). Leave empty to use the profile's declared width.",
           "status_interval": "How often to check printer status (0 to disable)."
         }
       },
@@ -200,6 +208,7 @@
       "fields": {
         "image": {"name": "Image", "description": "Path or URL to the image to print."},
         "high_density": {"name": "High density", "description": "Use high density image mode if supported."},
+        "impl": {"name": "Implementation", "description": "ESC/POS image command to use (overrides the printer's configured default)."},
         "align": {"name": "Alignment", "description": "Horizontal alignment for the image."},
         "cut": {"name": "Cut", "description": "Cut mode after printing."},
         "feed": {"name": "Feed lines", "description": "Lines to feed after printing."}

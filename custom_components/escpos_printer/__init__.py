@@ -8,21 +8,24 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
-from .capabilities import PROFILE_AUTO, is_valid_profile
+from .capabilities import PROFILE_AUTO, is_valid_profile, pick_impl
 from .const import (
     CONF_CODEPAGE,
     CONF_CUPS_SERVER,
     CONF_DEFAULT_ALIGN,
     CONF_DEFAULT_CUT,
+    CONF_IMPL,
     CONF_LINE_WIDTH,
     CONF_PRINTER_NAME,
     CONF_PROFILE,
     CONF_STATUS_INTERVAL,
     CONF_TIMEOUT,
+    CONF_WIDTH_PIXELS,
     DEFAULT_ALIGN,
     DEFAULT_CUT,
     DEFAULT_LINE_WIDTH,
     DOMAIN,
+    IMPL_MODES,
 )
 from .printer import EscposPrinterAdapter, PrinterConfig
 from .services import async_setup_services, async_unload_services
@@ -110,13 +113,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN][DATA_SERVICES_REGISTERED] = True
         _LOGGER.debug("Registered global services for %s", DOMAIN)
 
+    profile_value = entry.options.get(CONF_PROFILE) or entry.data.get(CONF_PROFILE)
+
+    # Per-entry image implementation: an explicit mode wins; "auto"/unset
+    # follows the profile (pick_impl loads the capabilities DB — executor).
+    entry_impl = entry.options.get(CONF_IMPL, entry.data.get(CONF_IMPL))
+    if entry_impl not in IMPL_MODES:
+        entry_impl = await hass.async_add_executor_job(pick_impl, profile_value)
+
+    raw_width = entry.options.get(CONF_WIDTH_PIXELS, entry.data.get(CONF_WIDTH_PIXELS))
+    width_pixels = int(raw_width) if raw_width else None
+
     config = PrinterConfig(
         printer_name=entry.data[CONF_PRINTER_NAME],
         cups_server=entry.data.get(CONF_CUPS_SERVER),
         timeout=float(entry.options.get(CONF_TIMEOUT, entry.data.get(CONF_TIMEOUT, 4.0))),
         codepage=entry.options.get(CONF_CODEPAGE) or entry.data.get(CONF_CODEPAGE),
-        profile=entry.options.get(CONF_PROFILE) or entry.data.get(CONF_PROFILE),
+        profile=profile_value,
         line_width=int(entry.options.get(CONF_LINE_WIDTH, entry.data.get(CONF_LINE_WIDTH, 48))),
+        width_pixels=width_pixels,
+        impl=entry_impl,
     )
     adapter = EscposPrinterAdapter(config)
 

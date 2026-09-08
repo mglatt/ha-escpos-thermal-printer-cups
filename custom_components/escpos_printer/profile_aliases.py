@@ -1,0 +1,211 @@
+"""Clone/equivalent-model aliases onto known printer profiles.
+
+Ported from the upstream (direct-transport) integration's v1.1.0
+``capabilities/aliases.py``. Aliases route rebadged or near-equivalent
+hardware to an existing profile — almost always a bundled
+escpos-printer-db one, but occasionally an integration-registered profile
+(see custom_profiles.py) when no bundled profile's codepage table matches
+the hardware. They only ever improve defaults (width, codepages) — they
+never gate behavior. Genuinely new hardware belongs upstream in
+escpos-printer-db first; a custom profile is the fallback only when
+upstream can't represent it (e.g. non-standard codepage numbering).
+
+Researched-but-held models (deliberately absent — conflicting or
+unverified specs, or a widthless alias target), status as of the
+2026-08-13 vendor-manual/FCC research pass (GitHub trackers were
+exhausted earlier the same day — escpos-printer-db, python-escpos, and
+escpos-php issues all searched):
+- Zjiang ZJ-8220: a real SKU (zjiang.com product id 34), likely generic
+  80mm/203dpi class, but no primary spec sheet or FCC filing found —
+  zjiang.com is unreachable to fetchers (TLS cert points at sister
+  domain cnfujun.com). Held at low confidence.
+- PeriPage A6-class: PERMANENTLY OUT OF SCOPE — not ESC/POS at all
+  (proprietary Bluetooth protocol; python-escpos #386 plus multiple
+  reverse-engineering projects, e.g. eliasweingaertner/peripage-A6-
+  bluetooth). Note "MTP-3" is a GOOJPRT model, not PeriPage — a
+  different, unverified device; don't conflate the two.
+- Symcode/Bisofice: CLOSED as unmappable — storefront brands over
+  mixed OEM hardware, no FCC identity of record; the generic profile
+  is the right answer for these.
+(Resolved by this pass: TM-m10 — TRG-confirmed geometry, registered as
+its own profile in custom_profiles.py with a borrowed-and-flagged
+codepage table; Bixolon SRP-350III/352III and Citizen CT-S801/851 —
+vendor-manual-confirmed geometry, aliased below.)
+"""
+
+from __future__ import annotations
+
+import re
+
+_NORMALIZE_RE = re.compile(r"[^a-z0-9]+")
+
+
+def normalize_model(name: str) -> str:
+    """Lowercase and strip everything but letters/digits ("CT-S601 II" -> "cts601ii")."""
+    return _NORMALIZE_RE.sub("", name.casefold())
+
+
+# Display-name → bundled target profile. Source of truth for both the
+# dropdown rows and the normalized alias lookup. Each group cites its basis.
+ALIAS_MODELS: dict[str, str] = {
+    # Citizen CT-S601/651 family: shared command reference
+    # (escpos-printer-db issue #49), same 80mm/640px/203dpi class per
+    # Citizen spec pages. S801/S851 excluded (576-vs-640 dot class unresolved).
+    "Citizen CT-S601": "CT-S651",
+    "Citizen CT-S601II": "CT-S651",
+    "Citizen CT-S651II": "CT-S651",
+    # Zjiang 5890 family: POS-5890 profile covers rebadges per its own notes.
+    # ZJ-5802 verified 58mm/384dots/203dpi via FCC filing RVUZJ-5802DD.
+    "Zjiang ZJ-5890": "POS-5890",
+    "Zjiang ZJ-5890K": "POS-5890",
+    "Zjiang POS-5890K": "POS-5890",
+    "Zjiang ZJ-5802": "POS-5890",
+    # Epson current-gen successors of TM-T20II: 80mm/576dots/203dpi per
+    # Epson spec sheets (TM-T20III CPD-58120R1; TM-T82II/III brochures).
+    "Epson TM-T20III": "TM-T20II",
+    "Epson TM-T20X": "TM-T20II",
+    "Epson TM-T82II": "TM-T20II",
+    "Epson TM-T82III": "TM-T20II",
+    # Epson TM-T88 successors: same 80mm/512dots/180dpi lineage as TM-T88V.
+    "Epson TM-T88VI": "TM-T88V",
+    "Epson TM-T88VII": "TM-T88V",
+    # Epson TM-T70/TM-T70II ANK (alphanumeric) models: upstream
+    # escpos-printer-db profiles for both match TM-T88V's class exactly
+    # (512px/180dpi, Font A/B 42/56 columns, codepage indices agree at
+    # every index both tables define -- T70's table is a subset of
+    # TM-T88V's, T70II's is nearly identical). ANK only -- the
+    # TM-T70-SA/TM-T70II-SA/TM-T70II-CH regional variants are a
+    # different 576px/203dpi class and are NOT covered by this alias.
+    "Epson TM-T70": "TM-T88V",
+    "Epson TM-T70II": "TM-T88V",
+    # Epson TM-m30/TM-m30II: point at the custom "TM-m30III" profile
+    # (registered in custom_profiles.py, carried from an upstream
+    # escpos-printer-db merge) rather than a bundled profile. Epson's own
+    # TM-m30 spec
+    # (https://download4.epson.biz/sec_pubs/bs/html/m000943/en/chap10_1.html)
+    # confirms the same 80mm/72mm-printable/203dpi/576-dot class, and the
+    # TM-m30II TRG (files.support.epson.com/pdf/pos/bulk/
+    # tm-m30ii_trg_en_reva.pdf pp.96-97) confirms an exact match on the
+    # full font triple too: 576 dots, Font A/B/C = 48/57/64 columns.
+    "Epson TM-m30": "TM-m30III",
+    "Epson TM-m30II": "TM-m30III",
+    # Xprinter: XP-58IIH 58mm/384dots (manuals.plus manual); XP-80C 80mm/576
+    # (xprintertech.com); XP-N160II/XP-T80A 80mm/203dpi (vendor listings).
+    "Xprinter XP-58IIH": "POS-5890",
+    "Xprinter XP-80C": "NT-80-V-UL",
+    "Xprinter XP-N160II": "NT-80-V-UL",
+    "Xprinter XP-T80A": "NT-80-V-UL",
+    # Rongta RP850P: hardware-verified upstream on a real unit (self-test:
+    # 640-dot head, GD207_v1.16 firmware). Raster width AND text columns
+    # follow the DIP column-mode switch (SW-5): 576 dots / 48 columns in
+    # the 48-column position, 512 dots / 42 columns in the 42-column
+    # position (both modes probed on hardware 2026-08-13) — reconfigure
+    # after flipping the switch. Over-width raster WRAPS onto extra lines
+    # rather than clipping on this firmware. NOT aliased to RP326 because
+    # that bundled profile declares no pixel width.
+    #
+    # Points at the custom "RP820" profile (registered in
+    # custom_profiles.py), not a bundled escpos-printer-db profile.
+    # It was previously aliased to NT-80-V-UL, but that profile's
+    # codePages table sent ESC t 52/71/53 for CP437/CP1252/CP858, values
+    # that don't exist in this firmware's 0-47 table, so every codepage
+    # but CP850 printed garbage on real hardware -- the firmware actually
+    # follows Epson's standard numbering (0/2/16/19 for the same four
+    # codepages, hardware-verified 2026-08-13). custom_profiles.py now
+    # dedupes NT-80-V-UL's >=48 duplicate indices at runtime too, so it
+    # *also* sends 0/2/16/19 for these four. RP820 still earns its own
+    # profile: NT-80-V-UL's ~31 codepage names that only ever had a
+    # single index >= 48 (e.g. CP1250, CP775) remain unreachable on clone
+    # firmware, while RP820's full Epson table (copied from TM-T20II)
+    # covers them at their real low indices; RP820 also carries
+    # hardware-verified per-DIP-mode geometry (576px/48 cols in the
+    # 48-column SW-5 position, 512px/42 cols in the 42-column one) and
+    # graphics=False that NT-80-V-UL has no data for.
+    #
+    # "RP820" is also the DHCP hostname (Rongta_RP820) that RP850P hardware
+    # announces on the network — observed on the hardware-verified unit
+    # above. No separate "Rongta RP820" alias entry is needed: RP820 is now
+    # a real profile key, so it already appears in the dropdown and
+    # resolves directly without going through the alias table.
+    "Rongta RP850P": "RP820",
+    # Rongta RP80 and RP328: same class as the hardware-verified
+    # RP850P/RP820. RP328's vendor page states 72mm effective width @
+    # 203dpi (= 576 dots), Font A 12x24/48 cols, Font B 9x17/64 cols,
+    # ESC/POS emulation (rongtatech.com/rp328-bluetooth-thermal-receipt-
+    # printer_p20.html). The official Rongta "RP80 Command Set" manual is
+    # a command-set fingerprint match for RP820/RP850P: identical ESC ! n
+    # font table (12x24 / 9x17) and the same Epson-standard ESC t 0-47
+    # codepage table with the same reserved slots 11-14.
+    "Rongta RP80": "RP820",
+    "Rongta RP328": "RP820",
+    # Bixolon SRP-350III: official user's manual v2.00 section 8-1 states
+    # 180dpi / 72mm printing width (= 512-dot class) with Font A/B
+    # defaults 42/56 -- exactly TM-T88V's geometry. Its 203dpi sibling
+    # SRP-352III (same manual) is the 576-dot class with Font A 48 --
+    # TM-T20II geometry. Bixolon documents Epson-standard ESC t numbering
+    # (0=437, 2=850, 16=1252) in its unified command manual; verify
+    # codepages on real hardware.
+    "Bixolon SRP-350III": "TM-T88V",
+    "Bixolon SRP-352III": "TM-T20II",
+    # Citizen CT-S801/CT-S851 (and II revisions): official user's manuals
+    # section 1.4 confirm 203dpi with the 80mm default = 576 dots (Font
+    # A/B/C 48/64/72). The 640-dot figure in the same table is the 83mm
+    # memory-switch paper option, not the default -- users running 83mm
+    # stock should adjust the width override. Citizen's shared command
+    # reference dual-maps WPC1252 at both 9 and 16, and accepts the
+    # Epson-standard 0/2/16/19 -- so TM-T20II's table works for the
+    # common codepages; exotic pages (e.g. CP857 at Citizen's 8 vs
+    # Epson's 13) may need a manual codepage override.
+    "Citizen CT-S801": "TM-T20II",
+    "Citizen CT-S801II": "TM-T20II",
+    "Citizen CT-S851": "TM-T20II",
+    "Citizen CT-S851II": "TM-T20II",
+    # Misc verified 58mm/384dot ESC/POS clones.
+    "HOIN HOP-E58": "POS-5890",
+    "Goojprt PT-210": "POS-5890",
+    "Netum NT-1809DD": "NT-5890K",
+    # Sunmi: V1 same 58mm class as bundled Sunmi-V2; T2 built-in is
+    # 80mm/576dots/203dpi per Sunmi docs.
+    "Sunmi V1": "Sunmi-V2",
+    "Sunmi T2": "NT-80-V-UL",
+}
+
+
+def _alias_keys(display: str) -> tuple[str, ...]:
+    """Normalize a display name into its full key AND its bare-model key
+    (vendor word stripped) -- e.g. "Citizen CT-S601II" -> ("citizencts601ii",
+    "cts601ii"). Both matter for resolution: the bare key covers manually
+    entered custom-profile values that omit the vendor name; the bare key
+    is also how real bundled profile keys are normalized, so it's what a
+    collision check must compare against too.
+    """
+    _vendor, _sep, rest = display.partition(" ")
+    if not rest:
+        return (normalize_model(display),)
+    return (normalize_model(display), normalize_model(rest))
+
+
+def _build_alias_table(models: dict[str, str]) -> dict[str, str]:
+    """Normalize each display name into its alias keys (see ``_alias_keys``)."""
+    table: dict[str, str] = {}
+    for display, target in models.items():
+        for key in _alias_keys(display):
+            table[key] = target
+    return table
+
+
+PROFILE_ALIASES: dict[str, str] = _build_alias_table(ALIAS_MODELS)
+
+
+def resolve_alias(name: str) -> str | None:
+    """Resolve a model name to a bundled profile key via the alias table."""
+    return PROFILE_ALIASES.get(normalize_model(name))
+
+
+def canonical_profile_key(profile_key: str | None) -> str | None:
+    """Resolve an alias to its bundled target; pass through everything else."""
+    if not profile_key:
+        return profile_key
+    from .capabilities import resolve_profile_name  # noqa: PLC0415  (avoid cycle)
+
+    return resolve_profile_name(profile_key) or profile_key

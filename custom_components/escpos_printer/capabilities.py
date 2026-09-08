@@ -36,6 +36,12 @@ def _get_capabilities() -> dict[str, Any]:
     try:
         from escpos.capabilities import CAPABILITIES  # noqa: PLC0415
 
+        from .custom_profiles import register_custom_profiles  # noqa: PLC0415
+
+        # Patch/register integration-maintained profiles before anything
+        # reads the registry (idempotent; see custom_profiles.py).
+        register_custom_profiles()
+
         return CAPABILITIES  # type: ignore[no-any-return]  # noqa: TRY300
     except ImportError:
         _LOGGER.warning("python-escpos capabilities not available, using fallback")
@@ -103,10 +109,27 @@ def get_profile_choices() -> list[tuple[str, str]]:
         display = f"{vendor} {name}" if vendor and vendor != "Generic" else name
         profile_list.append((key, display))
 
-    # Sort by display name, case-insensitive
-    profile_list.sort(key=lambda x: x[1].lower())
+    from .profile_aliases import ALIAS_MODELS, _alias_keys, normalize_model  # noqa: PLC0415
 
-    choices.extend(profile_list)
+    # Skip any alias whose normalized key collides with a real profile key.
+    # A collision can show up in either derivation -- the full display name
+    # or the bare model with the vendor word stripped (matching how bundled
+    # profile keys are usually spelled) -- so check both, via the same
+    # ``_alias_keys`` derivation ``_build_alias_table`` uses, so the two
+    # sites can't drift apart again.
+    real_normalized = {normalize_model(key) for key in profiles}
+    alias_list = [
+        (normalize_model(display), f"{display} (compatible)")
+        for display in ALIAS_MODELS
+        if not set(_alias_keys(display)) & real_normalized
+    ]
+
+    # Single sort over the combined list so e.g. "Epson TM-T20III
+    # (compatible)" sits next to "Epson TM-T20II".
+    combined = profile_list + alias_list
+    combined.sort(key=lambda x: x[1].lower())
+
+    choices.extend(combined)
 
     # Add Custom option at the end
     choices.append((PROFILE_CUSTOM, "Custom (enter profile name)..."))
@@ -130,16 +153,47 @@ def is_valid_profile(profile_key: str | None) -> bool:
         profile_key: Profile key to validate.
 
     Returns:
-        True if profile is valid, empty (auto), or custom marker.
+        True if profile is valid (including a case variant or clone
+        alias), empty (auto), or custom marker.
     """
     if not profile_key or profile_key == PROFILE_AUTO:
         return True  # Empty means auto
     if profile_key == PROFILE_CUSTOM:
         return True  # Custom marker is valid
 
+    return resolve_profile_name(profile_key) is not None
+
+
+def resolve_profile_name(raw: str | None) -> str | None:
+    """Resolve user input to a bundled profile key.
+
+    Accepts an exact key, a case-insensitive key, or a clone alias
+    (see ``profile_aliases.PROFILE_ALIASES``). Returns None when nothing
+    matches.
+    """
+    if not raw:
+        return None
+    from .profile_aliases import resolve_alias  # noqa: PLC0415
+
+    raw = raw.strip()
     capabilities = _get_capabilities()
-    profiles = capabilities.get("profiles", {})
-    return profile_key in profiles
+    profiles: dict[str, object] = capabilities.get("profiles", {})
+    if raw in profiles:
+        return raw
+    lowered = {key.casefold(): key for key in profiles}
+    if raw.casefold() in lowered:
+        return lowered[raw.casefold()]
+    target = resolve_alias(raw)
+    if target and target in profiles:
+        return target
+    return None
+
+
+def _canonical(profile_key: str) -> str:
+    """Map a clone alias (or case variant) onto its real profile key."""
+    from .profile_aliases import canonical_profile_key  # noqa: PLC0415
+
+    return canonical_profile_key(profile_key) or profile_key
 
 
 # =============================================================================
@@ -163,6 +217,7 @@ def get_profile_codepages(profile_key: str | None) -> list[str]:
         # For custom profiles, return all available codepages
         return get_all_codepages()
 
+    profile_key = _canonical(profile_key)
     capabilities = _get_capabilities()
     profiles = capabilities.get("profiles", {})
 
@@ -245,6 +300,7 @@ def get_profile_line_widths(profile_key: str | None) -> list[int]:
     if not profile_key or profile_key in (PROFILE_AUTO, PROFILE_CUSTOM):
         return COMMON_LINE_WIDTHS.copy()
 
+    profile_key = _canonical(profile_key)
     capabilities = _get_capabilities()
     profiles = capabilities.get("profiles", {})
 
@@ -296,6 +352,7 @@ def get_profile_cut_modes(profile_key: str | None) -> list[str]:
     if not profile_key or profile_key in (PROFILE_AUTO, PROFILE_CUSTOM):
         return DEFAULT_CUT_MODES.copy()
 
+    profile_key = _canonical(profile_key)
     capabilities = _get_capabilities()
     profiles = capabilities.get("profiles", {})
 
@@ -335,6 +392,7 @@ def profile_supports_feature(profile_key: str | None, feature: str) -> bool:
         # For auto/custom profiles, assume all features available
         return True
 
+    profile_key = _canonical(profile_key)
     capabilities = _get_capabilities()
     profiles = capabilities.get("profiles", {})
 
@@ -359,6 +417,7 @@ def get_profile_features(profile_key: str | None) -> dict[str, bool]:
     if not profile_key or profile_key in (PROFILE_AUTO, PROFILE_CUSTOM):
         return {}
 
+    profile_key = _canonical(profile_key)
     capabilities = _get_capabilities()
     profiles = capabilities.get("profiles", {})
 
@@ -369,6 +428,52 @@ def get_profile_features(profile_key: str | None) -> dict[str, bool]:
     features = profile.get("features", {})
 
     return {k: bool(v) for k, v in features.items() if isinstance(v, bool)}
+
+
+# Preference order for automatic image-implementation selection. "graphics"
+# is deliberately absent: several profiles declare it but clone firmware
+# rarely implements GS ( L correctly, so it's opt-in only.
+_IMPL_PREFERENCE = ("bitImageRaster", "bitImageColumn")
+_IMAGE_FEATURES = ("bitImageRaster", "bitImageColumn", "graphics")
+
+
+def pick_impl(profile_key: str | None) -> str | None:
+    """Pick the image implementation the profile prefers.
+
+    Returns the first of ``_IMPL_PREFERENCE`` the profile's features
+    enable, or None when the profile declares neither (auto/custom/unknown
+    profiles have no feature data and also return None — the caller then
+    leaves the choice to python-escpos's default).
+    """
+    features = get_profile_features(profile_key)
+    for impl in _IMPL_PREFERENCE:
+        if features.get(impl):
+            return impl
+    return None
+
+
+def profile_declares_no_images(profile_key: str | None) -> bool:
+    """True when the profile explicitly declares no image support at all.
+
+    Auto/custom/unknown profiles (no feature data) are assumed capable.
+    Used for a warning only — profile flags are hints, never gates.
+    """
+    features = get_profile_features(profile_key)
+    if not features:
+        return False
+    return not any(features.get(f) for f in _IMAGE_FEATURES)
+
+
+def get_profile_pixel_width(profile_key: str | None) -> int | None:
+    """Return the profile's declared printable width in dots, if any."""
+    media = get_profile_info(profile_key).get("media", {})
+    try:
+        pixels = media.get("width", {}).get("pixels")
+    except AttributeError:
+        return None
+    if isinstance(pixels, int) and pixels > 0:
+        return pixels
+    return None
 
 
 # =============================================================================
@@ -388,6 +493,7 @@ def get_profile_info(profile_key: str | None) -> dict[str, Any]:
     if not profile_key or profile_key in (PROFILE_AUTO, PROFILE_CUSTOM):
         return {}
 
+    profile_key = _canonical(profile_key)
     capabilities = _get_capabilities()
     profiles = capabilities.get("profiles", {})
 

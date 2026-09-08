@@ -35,6 +35,9 @@ async def test_diagnostics_payload(hass):  # type: ignore[no-untyped-def]
     assert runtime["printer_name"] == "TestPrinter"
     assert "keepalive" not in runtime
     assert "diagnostics" in runtime
+    # Effective image settings are surfaced for support requests
+    assert runtime["width_pixels"] == 512  # fallback: no override, no profile
+    assert runtime["default_impl"] is None
 
 
 async def test_diagnostics_without_adapter(hass):  # type: ignore[no-untyped-def]

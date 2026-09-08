@@ -281,6 +281,16 @@ print_image:
       description: Use high-density printing mode
       selector:
         boolean: {}
+    impl:
+      name: Implementation
+      description: ESC/POS image command to use (overrides the printer's configured default)
+      required: false
+      selector:
+        select:
+          options:
+            - "bitImageRaster"
+            - "bitImageColumn"
+            - "graphics"
     align:
       name: Alignment
       description: Image alignment

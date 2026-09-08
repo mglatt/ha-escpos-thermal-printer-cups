@@ -8,10 +8,12 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_CODEPAGE,
+    CONF_IMPL,
     CONF_LINE_WIDTH,
     CONF_PRINTER_NAME,
     CONF_PROFILE,
     CONF_STATUS_INTERVAL,
+    CONF_WIDTH_PIXELS,
     DOMAIN,
 )
 
@@ -33,6 +35,11 @@ async def async_get_config_entry_diagnostics(
         # Get config once to avoid repeated nested getattr calls
         config = getattr(adapter, "_config", None)
 
+        try:
+            width_pixels = adapter.image_target_width()
+        except Exception:
+            width_pixels = None
+
         runtime = {
             "status": adapter.get_status(),
             "diagnostics": adapter.get_diagnostics(),
@@ -41,6 +48,8 @@ async def async_get_config_entry_diagnostics(
             "line_width": config.line_width if config else None,
             "printer_name": config.printer_name if config else None,
             "status_interval": getattr(adapter, "_status_interval", None),
+            "width_pixels": width_pixels,
+            "default_impl": config.impl if config else None,
         }
 
     payload = {
@@ -51,12 +60,16 @@ async def async_get_config_entry_diagnostics(
                 CONF_CODEPAGE: data.get(CONF_CODEPAGE),
                 CONF_PROFILE: data.get(CONF_PROFILE),
                 CONF_LINE_WIDTH: data.get(CONF_LINE_WIDTH),
+                CONF_WIDTH_PIXELS: data.get(CONF_WIDTH_PIXELS),
+                CONF_IMPL: data.get(CONF_IMPL),
             },
             "options": {
                 CONF_CODEPAGE: options.get(CONF_CODEPAGE),
                 CONF_PROFILE: options.get(CONF_PROFILE),
                 CONF_LINE_WIDTH: options.get(CONF_LINE_WIDTH),
                 CONF_STATUS_INTERVAL: options.get(CONF_STATUS_INTERVAL),
+                CONF_WIDTH_PIXELS: options.get(CONF_WIDTH_PIXELS),
+                CONF_IMPL: options.get(CONF_IMPL),
             },
         },
         "runtime": runtime,

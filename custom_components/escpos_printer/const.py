@@ -11,11 +11,26 @@ CONF_STATUS_INTERVAL = "status_interval"
 CONF_PROFILE = "profile"
 CONF_LINE_WIDTH = "line_width"
 
+CONF_WIDTH_PIXELS = "width_pixels"  # per-entry image width override (dots)
+CONF_IMPL = "impl"  # per-entry default image implementation
+
 # Default values
 DEFAULT_TIMEOUT = 4.0
 DEFAULT_ALIGN = "left"
 DEFAULT_CUT = "none"
 DEFAULT_LINE_WIDTH = 48
+
+# Image implementation selection. "auto" follows the printer profile
+# (capabilities.pick_impl); the rest map straight to python-escpos's
+# image(impl=...) argument.
+IMPL_AUTO = "auto"
+IMPL_MODES = ("bitImageRaster", "bitImageColumn", "graphics")
+IMPL_CHOICE_LABELS = {
+    IMPL_AUTO: "Auto (recommended) — follow the printer profile",
+    "bitImageRaster": "Raster (GS v 0) — widest compatibility",
+    "bitImageColumn": "Column (ESC *) — for printers without raster support",
+    "graphics": "Graphics (GS ( L) — newer Epson printers",
+}
 
 # Profile selection constants (also defined in capabilities.py, imported here for convenience)
 PROFILE_AUTO = ""  # Auto-detect (default) profile
@@ -45,6 +60,7 @@ ATTR_SIZE = "size"
 ATTR_EC = "ec"
 ATTR_IMAGE = "image"
 ATTR_HIGH_DENSITY = "high_density"
+ATTR_IMPL = "impl"
 ATTR_LINES = "lines"
 ATTR_MODE = "mode"
 
