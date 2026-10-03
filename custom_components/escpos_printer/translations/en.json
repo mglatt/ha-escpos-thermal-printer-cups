@@ -171,6 +171,9 @@
         "underline": {"name": "Underline", "description": "Underline mode for text."},
         "width": {"name": "Width multiplier", "description": "Text width multiplier (1–3)."},
         "height": {"name": "Height multiplier", "description": "Text height multiplier (1–3)."},
+        "invert": {"name": "Invert", "description": "Print white text on a black background."},
+        "density": {"name": "Density", "description": "Print darkness as a percentage, -50 (lightest) to +50 (darkest). Empty keeps the printer's current darkness; a set value sticks until changed or the printer restarts. Printers without GS | support ignore it."},
+        "font": {"name": "Font", "description": "Font A (default) or the smaller font B, which fits more characters per line. Falls back to font A if the printer profile has no font B."},
         "encoding": {"name": "Encoding", "description": "Character encoding/codepage for text."},
         "cut": {"name": "Cut", "description": "Cut mode after printing."},
         "feed": {"name": "Feed lines", "description": "Lines to feed after printing."}
@@ -186,6 +189,9 @@
         "underline": {"name": "Underline", "description": "Underline mode for text."},
         "width": {"name": "Width multiplier", "description": "Text width multiplier (1–3)."},
         "height": {"name": "Height multiplier", "description": "Text height multiplier (1–3)."},
+        "invert": {"name": "Invert", "description": "Print white text on a black background."},
+        "density": {"name": "Density", "description": "Print darkness as a percentage, -50 (lightest) to +50 (darkest). Empty keeps the printer's current darkness; a set value sticks until changed or the printer restarts. Printers without GS | support ignore it."},
+        "font": {"name": "Font", "description": "Font A (default) or the smaller font B, which fits more characters per line. Falls back to font A if the printer profile has no font B."},
         "cut": {"name": "Cut", "description": "Cut mode after printing."},
         "feed": {"name": "Feed lines", "description": "Lines to feed after printing."}
       }
@@ -265,6 +271,9 @@
         "underline": {"name": "Underline", "description": "Underline mode for text."},
         "width": {"name": "Width multiplier", "description": "Text width multiplier (normal/double/triple, or 1-8 in YAML)."},
         "height": {"name": "Height multiplier", "description": "Text height multiplier (normal/double/triple, or 1-8 in YAML)."},
+        "invert": {"name": "Invert", "description": "Print white text on a black background."},
+        "density": {"name": "Density", "description": "Print darkness as a percentage, -50 (lightest) to +50 (darkest). Empty keeps the printer's current darkness; a set value sticks until changed or the printer restarts. Printers without GS | support ignore it."},
+        "font": {"name": "Font", "description": "Font A (default) or the smaller font B, which fits more characters per line. Falls back to font A if the printer profile has no font B."},
         "utf8": {"name": "UTF-8 mode", "description": "Enable UTF-8 transcoding to automatically convert special characters to printer-compatible encoding."},
         "encoding": {"name": "Encoding", "description": "Character encoding/codepage for text (ignored when UTF-8 mode is enabled)."},
         "cut": {"name": "Cut", "description": "Cut mode after printing."},

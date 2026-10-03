@@ -15,7 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 from PIL import Image
 
-from .const import DEFAULT_ALIGN, DEFAULT_CUT, DEFAULT_TIMEOUT
+from .const import DEFAULT_ALIGN, DEFAULT_CUT, DEFAULT_TIMEOUT, DENSITY_LEVELS, TEXT_FONTS
 from .security import (
     MAX_BEEP_TIMES,
     MAX_FEED_LINES,
@@ -54,6 +54,60 @@ def _is_connection_error(err: Exception) -> bool:
         return True
     name = type(err).__name__
     return "Connection" in name or "Timeout" in name or "ClientError" in name
+
+
+def parse_density(value: Any) -> int | None:
+    """Map a density percentage ("+25", "-12.5%", 25, ...) to python-escpos's index.
+
+    None/"" means "leave the printer's darkness unchanged".
+
+    Raises:
+        ValueError: if *value* is not one of the DENSITY_LEVELS percentages.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        pct: float | None = float(str(value).strip().removesuffix("%"))
+    except ValueError:
+        pct = None
+    for label, index in DENSITY_LEVELS.items():
+        if pct is not None and float(label) == pct:
+            return index
+    raise ValueError(f"density must be one of {', '.join(DENSITY_LEVELS)} (percent)")
+
+
+def density_value(value: Any) -> Any:
+    """Voluptuous validator: accept only values parse_density understands."""
+    parse_density(value)
+    return value
+
+
+def _map_font(font: Any) -> str:
+    """Normalize a font choice to python-escpos's "a"/"b"; anything else is A."""
+    font_s = str(font).strip().lower() if font is not None else "a"
+    font_s = {"0": "a", "1": "b"}.get(font_s, font_s)
+    return font_s if font_s in TEXT_FONTS else "a"
+
+
+def _apply_font(printer: Any, font: str) -> str:
+    """Select *font* on *printer*; return the font actually in effect.
+
+    python-escpos raises NotSupported when the printer profile has no such
+    font, in which case font A is used instead.
+    """
+    try:
+        printer.set(font=font)
+    except Exception as e:
+        if font == "a":
+            _LOGGER.debug("Font A selection failed: %s", sanitize_log_message(str(e)))
+            return "a"
+        _LOGGER.warning(
+            "Font %s is not supported by this printer profile; using font A", font.upper()
+        )
+        with contextlib.suppress(Exception):
+            printer.set(font="a")
+        return "a"
+    return font
 
 
 # Late import of python-escpos to avoid import errors at HA startup if deps pending
@@ -541,8 +595,27 @@ class EscposPrinterAdapter:
             "last_error_reason": self._last_error_reason,
         }
 
-    def _wrap_text(self, text: str) -> str:
-        """Wrap text to fit within the configured line width.
+    def _columns_for_font(self, printer: Any, font: str) -> int:
+        """Wrap width for *font*: the configured width, scaled up for font B.
+
+        Font B packs more columns onto the same paper. The ratio comes from
+        the profile python-escpos is actually printing with, so a custom
+        line width keeps its proportion (e.g. 48 -> 64 on a 48/64 printer).
+        """
+        base = int(self._config.line_width or 0)
+        if font != "b" or base <= 0:
+            return base
+        try:
+            cols_a = printer.profile.get_columns("a")
+            cols_b = printer.profile.get_columns("b")
+        except Exception:
+            return base
+        if isinstance(cols_a, int) and isinstance(cols_b, int) and cols_a > 0 and cols_b > 0:
+            return max(1, base * cols_b // cols_a)
+        return base
+
+    def _wrap_text(self, text: str, cols: int | None = None) -> str:
+        """Wrap text to fit within *cols* (default: the configured line width).
 
         Preserves all newlines including trailing ones. Python's
         str.splitlines() strips trailing newlines, so we detect and
@@ -550,11 +623,14 @@ class EscposPrinterAdapter:
 
         Args:
             text: Text to wrap.
+            cols: Column count; None uses the configured line width.
 
         Returns:
             Wrapped text with original newline structure preserved.
         """
-        cols = max(0, int(self._config.line_width or 0))
+        if cols is None:
+            cols = int(self._config.line_width or 0)
+        cols = max(0, cols)
         if cols <= 0:
             return text
 
@@ -697,6 +773,9 @@ class EscposPrinterAdapter:
         underline: str | None = None,
         width: str | None = None,
         height: str | None = None,
+        invert: bool | None = None,
+        density: Any = None,
+        font: str | None = None,
         encoding: str | None = None,
         cut: str | None = DEFAULT_CUT,
         feed: int | None = 0,
@@ -706,11 +785,12 @@ class EscposPrinterAdapter:
         ul = self._map_underline(underline)
         wmult = self._map_multiplier(width)
         hmult = self._map_multiplier(height)
-        text_to_print = self._wrap_text(text)
+        density_idx = parse_density(density)
+        font_v = _map_font(font)
 
         def _do_full_print(printer: Any) -> None:  # noqa: PLR0912
             """Print text using the provided printer instance."""
-            _LOGGER.debug("print_text begin: text=%r, align=%s", text_to_print[:50] if len(text_to_print) > 50 else text_to_print, align_m)
+            _LOGGER.debug("print_text begin: text=%r, align=%s", text[:50], align_m)
             # Optional codepage
             if self._config.codepage:
                 try:
@@ -722,15 +802,29 @@ class EscposPrinterAdapter:
             # Set style
             if hasattr(printer, "set"):
                 _LOGGER.debug("Setting printer style: align=%s, bold=%s, width=%s, height=%s", align_m, bold, wmult, hmult)
+                # invert is always sent: escpos set() emits nothing for None,
+                # and jobs carry no ESC @ reset, so printer state persists
+                # across CUPS jobs -- one inverted job would otherwise leave
+                # every later print white-on-black. density=None stays
+                # unsent on purpose: darkness is a hardware knob that should
+                # stick until changed.
                 if wmult > 1 or hmult > 1:
                     printer.set(
                         align=align_m, bold=bool(bold), underline=ul,
                         width=wmult, height=hmult,
                         custom_size=True, normal_textsize=False,
+                        invert=bool(invert), density=density_idx,
                     )
                 else:
                     printer.set(align=align_m, bold=bool(bold), underline=ul, width=wmult, height=hmult,
-                                custom_size=False, normal_textsize=True)
+                                custom_size=False, normal_textsize=True,
+                                invert=bool(invert), density=density_idx)
+                # Font separately: escpos raises NotSupported mid-set() for a
+                # font the profile lacks, which would skip the settings above.
+                font_used = _apply_font(printer, font_v)
+            else:
+                font_used = "a"
+            text_to_print = self._wrap_text(text, self._columns_for_font(printer, font_used))
 
             # Encoding is best-effort; python-escpos handles str internally.
             if encoding:
@@ -788,7 +882,8 @@ class EscposPrinterAdapter:
 
         def _do_print(printer: Any) -> None:
             if hasattr(printer, "set"):
-                printer.set(align=align_m)
+                # invert=False: undo a white-on-black left by an earlier job
+                printer.set(align=align_m, invert=False)
             printer.qr(data, size=qsize, ec=_map_qr_ec(qec))
 
         await self._run_job(hass, "print_qr", _do_print, cut=cut, feed=feed)
@@ -858,7 +953,8 @@ class EscposPrinterAdapter:
 
         def _do_print(printer: Any) -> None:
             if hasattr(printer, "set"):
-                printer.set(align=align_m)
+                # invert=False: undo a white-on-black left by an earlier job
+                printer.set(align=align_m, invert=False)
             # Some printers need conversion; python-escpos handles PIL.Image
             if hasattr(printer, "image"):
                 kwargs: dict[str, Any] = {
@@ -947,7 +1043,8 @@ class EscposPrinterAdapter:
 
         def _do_print(printer: Any) -> None:
             if hasattr(printer, "set"):
-                printer.set(align=align_m)
+                # invert=False: undo a white-on-black left by an earlier job
+                printer.set(align=align_m, invert=False)
             # Attempt to pass 'force_software' when provided; fall back if unsupported
             kwargs = {
                 "height": height_v,

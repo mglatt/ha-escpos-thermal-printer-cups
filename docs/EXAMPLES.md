@@ -627,7 +627,7 @@ data:
 
 ### Formatted Notification (print_message)
 
-The `print_message` entity service provides full formatting control through the notify entity. This supports bold, underline, text size, alignment, and UTF-8 transcoding:
+The `print_message` entity service provides full formatting control through the notify entity. This supports bold, underline, text size, invert, font, density, alignment, and UTF-8 transcoding:
 
 ```yaml
 service: escpos_printer.print_message
@@ -641,6 +641,20 @@ data:
   height: double
   align: center
   cut: partial
+```
+
+### Inverted Banner
+
+`invert` prints white text on black, which stands out on a busy receipt. Every text print resets `invert` and `font` unless set, so a banner never leaks into the next print. `density` is different: it stays at whatever you last set until you change it or the printer restarts.
+
+```yaml
+service: escpos_printer.print_text
+data:
+  text: " FRONT DOOR OPEN "
+  invert: true
+  bold: true
+  align: center
+  density: "+25"
 ```
 
 ### Formatted Notification with UTF-8

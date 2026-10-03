@@ -18,7 +18,7 @@ Connect thermal printers via CUPS and start printing in minutes.
 
 ## Features
 
-- Print text with formatting (bold, underline, alignment, font sizes)
+- Print text with formatting (bold, underline, alignment, font sizes, white-on-black, font A/B, print darkness)
 - Print QR codes, barcodes, and images
 - Paper feed and cut control
 - Buzzer/beeper support
@@ -216,6 +216,9 @@ Omit `target` to broadcast to all configured printers.
 | `underline` | Underline: `none`, `single`, `double` | `none` |
 | `width` | Width: `normal`, `double`, `triple` | `normal` |
 | `height` | Height: `normal`, `double`, `triple` | `normal` |
+| `invert` | White text on a black background | `false` |
+| `font` | `a`, or the smaller `b` (more characters per line; falls back to `a` if the printer profile has no font B) | `a` |
+| `density` | Print darkness in percent: `-50`, `-37.5`, `-25`, `-12.5`, `0`, `+12.5`, `+25`, `+37.5`, `+50` (darkest). Sticks until changed or the printer restarts; ignored by printers without GS \| support | unchanged |
 | `cut` | Cut mode: `none`, `partial`, `full` | `partial` |
 | `feed` | Lines to feed after printing | `0` |
 

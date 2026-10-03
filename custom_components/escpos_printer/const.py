@@ -61,6 +61,8 @@ ATTR_EC = "ec"
 ATTR_IMAGE = "image"
 ATTR_HIGH_DENSITY = "high_density"
 ATTR_IMPL = "impl"
+ATTR_INVERT = "invert"
+ATTR_DENSITY = "density"
 ATTR_LINES = "lines"
 ATTR_MODE = "mode"
 
@@ -78,3 +80,21 @@ ATTR_FORCE_SOFTWARE = "force_software"
 # Beep-related
 ATTR_TIMES = "times"
 ATTR_DURATION = "duration"
+
+# Text fonts selectable on print_text/print_text_utf8/print_message
+TEXT_FONTS = ("a", "b")
+
+# Print darkness as GS | percentages, lightest to darkest. python-escpos's
+# set(density=0..8) index is not monotonic (5 is +50 %, then 6-8 step back
+# down to +12.5 %), so users pick a percentage and we map it to that index.
+DENSITY_LEVELS: dict[str, int] = {
+    "-50": 0,
+    "-37.5": 1,
+    "-25": 2,
+    "-12.5": 3,
+    "0": 4,
+    "+12.5": 8,
+    "+25": 7,
+    "+37.5": 6,
+    "+50": 5,
+}

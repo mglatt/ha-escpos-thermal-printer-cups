@@ -56,8 +56,10 @@ async def test_notify_send_message_uses_normal_text_size(hass):  # type: ignore[
             {"entity_id": entity_id, "message": "Normal"},
             blocking=True,
         )
-    mock_set.assert_called_once()
-    kw = mock_set.call_args.kwargs
+    # Style call first, then the separate font selection
+    assert mock_set.call_count == 2
+    assert mock_set.call_args_list[1].kwargs == {"font": "a"}
+    kw = mock_set.call_args_list[0].kwargs
     assert kw["custom_size"] is False
     assert kw["normal_textsize"] is True
 
@@ -83,8 +85,10 @@ async def test_print_message_entity_service_with_formatting(hass):  # type: igno
             },
             blocking=True,
         )
-    mock_set.assert_called_once()
-    kw = mock_set.call_args.kwargs
+    # Style call first, then the separate font selection
+    assert mock_set.call_count == 2
+    assert mock_set.call_args_list[1].kwargs == {"font": "a"}
+    kw = mock_set.call_args_list[0].kwargs
     assert kw["bold"] is True
     assert kw["width"] == 2
     assert kw["height"] == 2
@@ -106,8 +110,10 @@ async def test_print_message_entity_service_defaults(hass):  # type: ignore[no-u
             {"entity_id": entity_id, "message": "Simple text"},
             blocking=True,
         )
-    mock_set.assert_called_once()
-    kw = mock_set.call_args.kwargs
+    # Style call first, then the separate font selection
+    assert mock_set.call_count == 2
+    assert mock_set.call_args_list[1].kwargs == {"font": "a"}
+    kw = mock_set.call_args_list[0].kwargs
     assert kw["bold"] is False
     assert kw["custom_size"] is False
     assert kw["normal_textsize"] is True

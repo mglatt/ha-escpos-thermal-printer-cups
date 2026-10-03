@@ -74,6 +74,45 @@ print_text_utf8:
             - "6"
             - "7"
             - "8"
+    invert:
+      name: Invert
+      description: White text on a black background
+      selector:
+        boolean: {}
+    density:
+      name: Density
+      description: Print darkness as a percentage (-50 lightest to +50 darkest). Leave empty to keep the printer's current darkness; a set value sticks until changed or the printer restarts. Printers without GS | support ignore it.
+      selector:
+        select:
+          options:
+            - label: "-50% (lightest)"
+              value: "-50"
+            - label: "-37.5%"
+              value: "-37.5"
+            - label: "-25%"
+              value: "-25"
+            - label: "-12.5%"
+              value: "-12.5"
+            - label: "0% (normal)"
+              value: "0"
+            - label: "+12.5%"
+              value: "+12.5"
+            - label: "+25%"
+              value: "+25"
+            - label: "+37.5%"
+              value: "+37.5"
+            - label: "+50% (darkest)"
+              value: "+50"
+    font:
+      name: Font
+      description: Font A (default) or the smaller font B, which fits more characters per line. Falls back to font A if the printer profile has no font B.
+      selector:
+        select:
+          options:
+            - label: "Font A"
+              value: "a"
+            - label: "Font B (smaller)"
+              value: "b"
     cut:
       name: Cut
       description: Paper cutting mode after printing
@@ -169,6 +208,45 @@ print_text:
             - "6"
             - "7"
             - "8"
+    invert:
+      name: Invert
+      description: White text on a black background
+      selector:
+        boolean: {}
+    density:
+      name: Density
+      description: Print darkness as a percentage (-50 lightest to +50 darkest). Leave empty to keep the printer's current darkness; a set value sticks until changed or the printer restarts. Printers without GS | support ignore it.
+      selector:
+        select:
+          options:
+            - label: "-50% (lightest)"
+              value: "-50"
+            - label: "-37.5%"
+              value: "-37.5"
+            - label: "-25%"
+              value: "-25"
+            - label: "-12.5%"
+              value: "-12.5"
+            - label: "0% (normal)"
+              value: "0"
+            - label: "+12.5%"
+              value: "+12.5"
+            - label: "+25%"
+              value: "+25"
+            - label: "+37.5%"
+              value: "+37.5"
+            - label: "+50% (darkest)"
+              value: "+50"
+    font:
+      name: Font
+      description: Font A (default) or the smaller font B, which fits more characters per line. Falls back to font A if the printer profile has no font B.
+      selector:
+        select:
+          options:
+            - label: "Font A"
+              value: "a"
+            - label: "Font B (smaller)"
+              value: "b"
     encoding:
       name: Encoding
       description: Character encoding override
@@ -594,6 +672,45 @@ print_message:
             - "6"
             - "7"
             - "8"
+    invert:
+      name: Invert
+      description: White text on a black background
+      selector:
+        boolean: {}
+    density:
+      name: Density
+      description: Print darkness as a percentage (-50 lightest to +50 darkest). Leave empty to keep the printer's current darkness; a set value sticks until changed or the printer restarts. Printers without GS | support ignore it.
+      selector:
+        select:
+          options:
+            - label: "-50% (lightest)"
+              value: "-50"
+            - label: "-37.5%"
+              value: "-37.5"
+            - label: "-25%"
+              value: "-25"
+            - label: "-12.5%"
+              value: "-12.5"
+            - label: "0% (normal)"
+              value: "0"
+            - label: "+12.5%"
+              value: "+12.5"
+            - label: "+25%"
+              value: "+25"
+            - label: "+37.5%"
+              value: "+37.5"
+            - label: "+50% (darkest)"
+              value: "+50"
+    font:
+      name: Font
+      description: Font A (default) or the smaller font B, which fits more characters per line. Falls back to font A if the printer profile has no font B.
+      selector:
+        select:
+          options:
+            - label: "Font A"
+              value: "a"
+            - label: "Font B (smaller)"
+              value: "b"
     utf8:
       name: UTF-8 Mode
       description: Enable UTF-8 transcoding (converts special characters to printer-compatible encoding)

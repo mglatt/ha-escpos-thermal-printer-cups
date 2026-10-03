@@ -182,6 +182,9 @@ Select "Custom" to enter a profile name from escpos-printer-db manually. This is
 | underline | string | No | `none`, `single`, `double` |
 | width | string/int | No | `normal`, `double`, `triple`, or 1-8 in YAML |
 | height | string/int | No | `normal`, `double`, `triple`, or 1-8 in YAML |
+| invert | boolean | No | White text on a black background (default `false`) |
+| font | string | No | `a` (default) or `b`; font B fits more characters per line and falls back to `a` if the profile has no font B |
+| density | string/number | No | Print darkness in percent: `-50` to `+50` in 12.5 steps; empty leaves the printer's darkness unchanged |
 | encoding | string | No | Override codepage |
 | cut | string | No | `none`, `partial`, `full` |
 | feed | integer | No | Lines to feed (0-10) |
@@ -203,6 +206,9 @@ Entity service for the notify platform. Targets a notify entity and supports all
 | underline | string | No | `none`, `single`, `double` |
 | width | string/int | No | `normal`, `double`, `triple`, or 1-8 in YAML |
 | height | string/int | No | `normal`, `double`, `triple`, or 1-8 in YAML |
+| invert | boolean | No | White text on a black background (default `false`) |
+| font | string | No | `a` (default) or `b`; font B fits more characters per line and falls back to `a` if the profile has no font B |
+| density | string/number | No | Print darkness in percent: `-50` to `+50` in 12.5 steps; empty leaves the printer's darkness unchanged |
 | utf8 | boolean | No | Enable UTF-8 transcoding |
 | encoding | string | No | Override codepage (ignored when utf8 is true) |
 | cut | string | No | `none`, `partial`, `full` |

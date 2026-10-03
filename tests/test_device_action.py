@@ -1,6 +1,6 @@
 """Tests for device automation actions."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.const import CONF_DEVICE_ID, CONF_DOMAIN, CONF_TYPE
 from homeassistant.helpers import device_registry as dr
@@ -70,6 +70,26 @@ async def test_call_print_text_utf8_action(hass):  # type: ignore[no-untyped-def
         {},
         None,
     )
+
+
+@pytest.mark.parametrize("action", ["print_text", "print_text_utf8"])
+async def test_text_actions_pass_styling(hass, action):  # type: ignore[no-untyped-def]
+    entry, device = await _setup_entry_with_device(hass)
+    adapter = hass.data[DOMAIN][entry.entry_id]["adapter"]
+    config = {
+        CONF_DOMAIN: DOMAIN,
+        CONF_DEVICE_ID: device.id,
+        CONF_TYPE: action,
+        "text": "hello",
+        "invert": True,
+        "density": "+25",
+        "font": "b",
+    }
+    assert device_action.ACTION_SCHEMA(config)
+    with patch.object(adapter, "print_text", AsyncMock()) as mock_print:
+        await device_action.async_call_action_from_config(hass, config, {}, None)
+    kw = mock_print.call_args.kwargs
+    assert (kw["invert"], kw["density"], kw["font"]) == (True, "+25", "b")
 
 
 async def test_call_qr_feed_cut_beep_actions(hass):  # type: ignore[no-untyped-def]

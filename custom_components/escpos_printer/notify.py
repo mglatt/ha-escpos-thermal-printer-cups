@@ -15,7 +15,8 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 import voluptuous as vol
 
-from .const import DOMAIN
+from .const import DOMAIN, TEXT_FONTS
+from .printer import density_value
 from .text_utils import transcode_to_codepage
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,6 +39,9 @@ SERVICE_PRINT_MESSAGE_SCHEMA = cv.make_entity_service_schema(
             vol.In(["normal", "double", "triple"]),
             vol.All(vol.Coerce(int), vol.Range(min=1, max=8)),
         ),
+        vol.Optional("invert"): cv.boolean,
+        vol.Optional("density"): density_value,
+        vol.Optional("font"): vol.All(vol.Lower, vol.In(TEXT_FONTS)),
         vol.Optional("utf8"): cv.boolean,
         vol.Optional("encoding"): cv.string,
         vol.Optional("cut"): vol.In(["none", "partial", "full"]),
@@ -66,7 +70,8 @@ class EscposNotifyEntity(NotifyEntity):
 
     Standard send_message supports message and title only.
     Use the print_message entity service for full formatting control
-    (bold, underline, width, height, alignment, cut, feed).
+    (bold, underline, width, height, invert, density, font, alignment,
+    cut, feed).
     """
 
     _attr_has_entity_name = True
@@ -91,7 +96,8 @@ class EscposNotifyEntity(NotifyEntity):
         """Print a formatted message to the thermal printer.
 
         Supports all text formatting parameters: bold, underline,
-        width, height, alignment, encoding, cut, and feed.
+        width, height, invert, density, font, alignment, encoding, cut,
+        and feed.
         """
         message = kwargs.get("message", "")
         title = kwargs.get("title")
@@ -127,6 +133,9 @@ class EscposNotifyEntity(NotifyEntity):
                 underline=kwargs.get("underline", "none"),
                 width=kwargs.get("width", "normal"),
                 height=kwargs.get("height", "normal"),
+                invert=kwargs.get("invert", False),
+                density=kwargs.get("density"),
+                font=kwargs.get("font", "a"),
                 encoding=encoding,
                 cut=kwargs.get("cut", defaults.get("cut")),
                 feed=kwargs.get("feed", 0),
