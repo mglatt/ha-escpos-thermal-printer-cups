@@ -183,3 +183,18 @@ async def test_status_check_updates_diagnostics_and_listeners(monkeypatch: Any) 
 
     remove()
     assert not adapter._status_listeners
+
+
+def test_response_job_id_reads_pyipp_dict() -> None:
+    # pyipp's execute() returns a dict; "jobs" is a list of attribute dicts.
+    assert printer_mod._response_job_id({"jobs": [{"job-id": 42}]}) == 42
+    assert printer_mod._response_job_id({"jobs": []}) == 0
+    assert printer_mod._response_job_id({}) == 0
+
+
+async def test_submit_to_cups_returns_job_id() -> None:
+    assert await printer_mod._submit_to_cups("P", b"data") == 1
+
+
+async def test_get_cups_printers_reads_printer_names() -> None:
+    assert await printer_mod.get_cups_printers() == ["TestPrinter"]

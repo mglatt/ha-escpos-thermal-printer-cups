@@ -95,8 +95,18 @@ def fake_pyipp_module(request: Any) -> Generator[None, None, None]:
         PROCESSING = 4
         STOPPED = 5
 
+    class _IppJobState(IntEnum):
+        PENDING = 0x03
+        HELD = 0x04
+        PROCESSING = 0x05
+        STOPPED = 0x06
+        CANCELED = 0x07
+        ABORTED = 0x08
+        COMPLETED = 0x09
+
     class _IppOperation(IntEnum):
         PRINT_JOB = 0x0002
+        GET_JOB_ATTRIBUTES = 0x0009
         CUPS_GET_DEFAULT = 0x4001
         CUPS_GET_PRINTERS = 0x4002
         GET_PRINTER_ATTRIBUTES = 0x000B
@@ -123,13 +133,10 @@ def fake_pyipp_module(request: Any) -> Generator[None, None, None]:
             self.state = _FakeState()
             self.info = _FakePrinterInfo()
 
-    class _FakeResponse:
-        def __init__(self) -> None:
-            self.jobs: dict[str, Any] = {"job-id": 1}
-            self.printers: list[Any] = []
-
     class _FakeIPP:
         last_request_timeout: int | None = None
+        # Reported by Get-Job-Attributes; tests override per case.
+        job_state: int = _IppJobState.COMPLETED
 
         def __init__(self, uri: str, **kwargs: Any) -> None:
             self._uri = uri
@@ -144,10 +151,16 @@ def fake_pyipp_module(request: Any) -> Generator[None, None, None]:
         async def printer(self) -> _FakePrinter:
             return _FakePrinter()
 
-        async def execute(self, operation: Any, request_data: Any) -> _FakeResponse:
-            resp = _FakeResponse()
-            if operation == _IppOperation.CUPS_GET_PRINTERS:
-                resp.printers = [_FakePrinter()]
+        async def execute(self, operation: Any, request_data: Any) -> dict[str, Any]:
+            # Same shape as pyipp's parsed response: a dict whose "jobs" and
+            # "printers" keys are lists of attribute dicts.
+            resp: dict[str, Any] = {"status-code": 0, "jobs": [], "printers": []}
+            if operation == _IppOperation.PRINT_JOB:
+                resp["jobs"] = [{"job-id": 1, "job-state": _IppJobState.PENDING}]
+            elif operation == _IppOperation.GET_JOB_ATTRIBUTES:
+                resp["jobs"] = [{"job-id": 1, "job-state": type(self).job_state}]
+            elif operation == _IppOperation.CUPS_GET_PRINTERS:
+                resp["printers"] = [{"printer-name": "TestPrinter"}]
             return resp
 
         async def raw(self, operation: Any, request_data: Any) -> bytes:
@@ -159,6 +172,7 @@ def fake_pyipp_module(request: Any) -> Generator[None, None, None]:
     pyipp_mod.IPP = _FakeIPP  # type: ignore[attr-defined]
     pyipp_enums_mod.IppPrinterState = _IppPrinterState  # type: ignore[attr-defined]
     pyipp_enums_mod.IppOperation = _IppOperation  # type: ignore[attr-defined]
+    pyipp_enums_mod.IppJobState = _IppJobState  # type: ignore[attr-defined]
 
     orig_pyipp = sys.modules.get("pyipp")
     orig_pyipp_enums = sys.modules.get("pyipp.enums")

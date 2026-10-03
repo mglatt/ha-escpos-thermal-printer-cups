@@ -191,9 +191,22 @@ async def _submit_to_cups(
                 "data": data,
             },
         )
-    job_id = response.jobs.get("job-id", 0) if hasattr(response, "jobs") else 0
+    job_id = _response_job_id(response)
     _LOGGER.debug("Submitted IPP job %s to printer '%s'", job_id, printer_name)
     return job_id
+
+
+def _response_job_id(response: dict[str, Any]) -> int:
+    """Return the job-id from a parsed pyipp response, or 0 if absent.
+
+    pyipp's ``execute`` returns a plain dict whose "jobs" key is a list of
+    per-job attribute dicts.
+    """
+    for job in response.get("jobs") or []:
+        job_id = job.get("job-id")
+        if job_id:
+            return int(job_id)
+    return 0
 
 
 async def async_check_cups(server: str | None = None, timeout: float = DEFAULT_TIMEOUT) -> None:
@@ -268,13 +281,13 @@ async def get_cups_printers(server: str | None = None, timeout: float = DEFAULT_
                 IppOperation.CUPS_GET_PRINTERS,
                 {"operation-attributes-tag": {}},
             )
-        printers: list[str] = []
-        if hasattr(response, "printers"):
-            for p in response.printers:
-                name = getattr(p, "name", None) or getattr(getattr(p, "info", None), "name", None)
-                if name:
-                    printers.append(name)
-        return printers
+        # pyipp returns a dict; "printers" is a list of per-printer
+        # attribute dicts keyed by IPP attribute name.
+        return [
+            str(p["printer-name"])
+            for p in response.get("printers") or []
+            if p.get("printer-name")
+        ]
     except ImportError:
         _LOGGER.warning("pyipp library not available")
         return []
