@@ -41,6 +41,8 @@ def test_alias_table_contains_both_key_forms() -> None:
 def test_resolve_alias() -> None:
     assert resolve_alias("Epson TM-T88VI") == "TM-T88V"
     assert resolve_alias("tm-t88vi") == "TM-T88V"
+    assert resolve_alias("Bisofice XGR-POS581") == "POS-5890"
+    assert resolve_alias("XGR-POS581") == "POS-5890"
     assert resolve_alias("Totally Unknown Model") is None
 
 

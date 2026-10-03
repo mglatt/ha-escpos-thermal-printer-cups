@@ -17,13 +17,15 @@ MANIFEST = ROOT / "custom_components" / "escpos_printer" / "manifest.json"
 PYPROJECT = ROOT / "pyproject.toml"
 UVLOCK = ROOT / "uv.lock"
 
+# Packages Home Assistant core ships itself. hassfest rejects them in a
+# custom integration's manifest, so they stay in pyproject.toml (pinned to
+# the HA test harness's version for dev/CI) but never reach manifest.json.
+# Mirror HA_PROVIDED in check_requirements_sync.py.
+MANIFEST_EXCLUDES: set[str] = {"pillow"}
+
 # Packages for which we intentionally keep a version range in the HA manifest
 # to avoid conflicts with Home Assistant's own pins.
-MANIFEST_OVERRIDES: dict[str, str] = {
-    # Allow HA to satisfy its own Pillow pin (e.g., 11.3.x) while keeping
-    # compatibility with our integration.
-    "pillow": ">=11.0.0,<12.0.0",
-}
+MANIFEST_OVERRIDES: dict[str, str] = {}
 
 
 def parse_pyproject_dependencies() -> list[Requirement]:
@@ -63,6 +65,8 @@ def build_manifest_requirements() -> list[str]:
     for r in reqs:
         name = r.name
         lower = name.lower()
+        if lower in MANIFEST_EXCLUDES:
+            continue
         # Apply explicit overrides first
         if lower in MANIFEST_OVERRIDES:
             out.append(f"{name}{MANIFEST_OVERRIDES[lower]}")

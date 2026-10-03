@@ -26,6 +26,11 @@ from packaging.specifiers import SpecifierSet
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
+# Provided by HA core at runtime; must appear in pyproject (dev/CI) but NOT
+# in manifest.json, which hassfest enforces. Mirror MANIFEST_EXCLUDES in
+# sync_manifest_requirements.py.
+HA_PROVIDED: set[str] = {"pillow"}
+
 
 def parse_pyproject() -> dict[str, SpecifierSet]:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text())
@@ -77,13 +82,18 @@ def main() -> int:
     py = parse_pyproject()
     mf = parse_manifest()
 
-    missing = set(py.keys()) ^ set(mf.keys())
+    leaked = HA_PROVIDED & set(mf.keys())
+    if leaked:
+        print(f"❌ HA-core-provided packages must not be in manifest.json: {sorted(leaked)}", file=sys.stderr)
+        return 1
+
+    missing = (set(py.keys()) - HA_PROVIDED) ^ set(mf.keys())
     if missing:
         print(f"❌ Package sets differ between pyproject and manifest: {sorted(missing)}", file=sys.stderr)
         return 1
 
     problems = []
-    for name in sorted(py.keys()):
+    for name in sorted(set(py.keys()) - HA_PROVIDED):
         if not compatible(py[name], mf[name]):
             problems.append((name, str(py[name]), str(mf[name])))
 
