@@ -284,7 +284,7 @@ Add the integration multiple times, once for each printer:
 2. Search for "ESC/POS Thermal Printer"
 3. Enter the new printer's connection details
 
-Each printer gets its own device and entities.
+Each printer gets its own device and entities: a notify entity, an **Online** binary sensor, a **Last print** timestamp sensor, and **Feed paper**, **Cut paper**, **Beep** and **Sample print** buttons.
 
 ### Targeting Printers
 

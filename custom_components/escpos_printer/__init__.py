@@ -34,7 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-PLATFORMS: list[str] = ["notify", "binary_sensor"]
+PLATFORMS: list[str] = ["notify", "binary_sensor", "sensor", "button"]
 
 # Track if services have been registered
 DATA_SERVICES_REGISTERED = "services_registered"

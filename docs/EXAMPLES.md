@@ -414,6 +414,28 @@ data:
 
 ## Home Assistant Automations
 
+### No Receipt Printed Today
+
+The **Last print** sensor is a UTC timestamp, so convert it to local time before comparing dates:
+
+```yaml
+automation:
+  - alias: "Remind if nothing printed today"
+    trigger:
+      - platform: time
+        at: "20:00:00"
+    condition:
+      - condition: template
+        value_template: >
+          {% set last = states('sensor.esc_pos_printer_kitchen_last_print') %}
+          {{ last in ['unknown', 'unavailable']
+             or as_local(as_datetime(last)).date() < now().date() }}
+    action:
+      - service: notify.mobile_app_phone
+        data:
+          message: "The kitchen printer hasn't printed anything today."
+```
+
 ### Door Access Logger
 
 ```yaml

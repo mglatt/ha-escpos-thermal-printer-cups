@@ -1,0 +1,52 @@
+{
+  "entity": {
+    "sensor": {
+      "last_print": {
+        "default": "mdi:clock-check-outline"
+      }
+    },
+    "button": {
+      "feed": {
+        "default": "mdi:arrow-collapse-down"
+      },
+      "cut": {
+        "default": "mdi:content-cut"
+      },
+      "beep": {
+        "default": "mdi:volume-high"
+      },
+      "sample_print": {
+        "default": "mdi:receipt-text-check-outline"
+      }
+    }
+  },
+  "services": {
+    "print_text": {
+      "service": "mdi:format-text"
+    },
+    "print_text_utf8": {
+      "service": "mdi:format-text"
+    },
+    "print_qr": {
+      "service": "mdi:qrcode"
+    },
+    "print_image": {
+      "service": "mdi:image"
+    },
+    "print_barcode": {
+      "service": "mdi:barcode"
+    },
+    "print_message": {
+      "service": "mdi:message-text"
+    },
+    "feed": {
+      "service": "mdi:arrow-down-thick"
+    },
+    "cut": {
+      "service": "mdi:content-cut"
+    },
+    "beep": {
+      "service": "mdi:bell-ring"
+    }
+  }
+}

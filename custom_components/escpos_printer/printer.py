@@ -263,6 +263,51 @@ def _response_job_id(response: dict[str, Any]) -> int:
     return 0
 
 
+# Encoded in the sample receipt's QR code
+SAMPLE_QR_URL = "https://github.com/mglatt/ha-escpos-thermal-printer-cups"
+
+# IPP job-state values (RFC 8011 5.3.7) used to follow a submitted job.
+JOB_STATE_CANCELED = 7
+JOB_STATE_ABORTED = 8
+JOB_STATE_COMPLETED = 9
+_JOB_STATE_NAMES = {JOB_STATE_CANCELED: "canceled", JOB_STATE_ABORTED: "aborted"}
+
+# How long to follow a submitted job before giving up on confirming it. A
+# raw receipt completes within seconds; a job still pending after this is
+# most likely waiting on an offline or stopped printer.
+JOB_TRACK_TIMEOUT = 120.0
+JOB_POLL_INTERVAL = 2.0
+
+
+async def get_cups_job_state(
+    printer_name: str,
+    job_id: int,
+    server: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> int | None:
+    """Return the IPP job-state of *job_id* on *printer_name*, or None if not reported."""
+    from pyipp import IPP  # noqa: PLC0415
+    from pyipp.enums import IppOperation  # noqa: PLC0415
+
+    uri = _build_printer_uri(printer_name, server)
+    async with IPP(uri, request_timeout=_ipp_timeout(timeout)) as ipp:
+        response = await ipp.execute(
+            IppOperation.GET_JOB_ATTRIBUTES,
+            {
+                "operation-attributes-tag": {
+                    "requesting-user-name": "homeassistant",
+                    "job-id": job_id,
+                    "requested-attributes": ["job-state"],
+                },
+            },
+        )
+    for job in response.get("jobs") or []:
+        state = job.get("job-state")
+        if state is not None:
+            return int(state)
+    return None
+
+
 async def async_check_cups(server: str | None = None, timeout: float = DEFAULT_TIMEOUT) -> None:
     """Probe the CUPS server at *server*; raise CupsError with a reason on failure.
 
@@ -451,6 +496,11 @@ class EscposPrinterAdapter:
         self._last_latency_ms: int | None = None
         self._last_error_reason: str | None = None
         self._no_image_warned = False
+        # Last print CUPS confirmed as completed (Last print sensor)
+        self._last_print: Any = None
+        self._last_print_job_id: int | None = None
+        self._print_listeners: list[Callable[[], None]] = []
+        self._job_trackers: set[asyncio.Task[None]] = set()
 
     @property
     def config(self) -> PrinterConfig:
@@ -543,6 +593,87 @@ class EscposPrinterAdapter:
         if self._cancel_status:
             self._cancel_status()
         self._cancel_status = None
+        for task in list(self._job_trackers):
+            task.cancel()
+        self._job_trackers.clear()
+
+    @property
+    def last_print(self) -> Any:
+        """When CUPS last reported one of our print jobs completed (UTC), or None."""
+        return self._last_print
+
+    @property
+    def last_print_job_id(self) -> int | None:
+        """CUPS job ID of the print behind ``last_print``."""
+        return self._last_print_job_id
+
+    def add_print_listener(self, callback: Callable[[], None]) -> Callable[[], None]:
+        """Call *callback* whenever ``last_print`` changes; returns an unsubscribe."""
+        self._print_listeners.append(callback)
+
+        def _remove() -> None:
+            with contextlib.suppress(ValueError):
+                self._print_listeners.remove(callback)
+
+        return _remove
+
+    def _start_job_tracking(self, hass: HomeAssistant, job_id: int) -> None:
+        """Follow *job_id* in the background until CUPS reports a final state."""
+        coro = self._track_job(job_id)
+        create = getattr(hass, "async_create_background_task", None)
+        if create is not None:
+            task = create(coro, f"escpos_printer track CUPS job {job_id}")
+        else:  # plain-asyncio callers (unit tests)
+            task = asyncio.get_running_loop().create_task(coro)
+        self._job_trackers.add(task)
+        task.add_done_callback(self._job_trackers.discard)
+
+    async def _track_job(self, job_id: int) -> None:
+        """Poll CUPS until *job_id* completes, fails, or JOB_TRACK_TIMEOUT passes.
+
+        Only "completed" counts as printed: for a raw queue that means the
+        CUPS backend delivered every byte to the printer. CUPS keeps job
+        history by default, so a job that finished between polls is still
+        reported.
+        """
+        name = self._config.printer_name
+        deadline = time.monotonic() + JOB_TRACK_TIMEOUT
+        while True:
+            try:
+                state = await get_cups_job_state(
+                    name, job_id, self._config.cups_server, timeout=self._config.timeout
+                )
+            except Exception as e:
+                _LOGGER.debug("Job %s state query failed: %s", job_id, sanitize_log_message(str(e)))
+                state = None
+            if state == JOB_STATE_COMPLETED:
+                self._record_print(job_id)
+                return
+            if state in _JOB_STATE_NAMES:
+                _LOGGER.warning(
+                    "CUPS job %s on '%s' was %s; not counted as printed",
+                    job_id,
+                    name,
+                    _JOB_STATE_NAMES[state],
+                )
+                return
+            if time.monotonic() >= deadline:
+                _LOGGER.warning(
+                    "CUPS job %s on '%s' had not completed after %ds (printer offline?); "
+                    "not counted as printed",
+                    job_id,
+                    name,
+                    int(JOB_TRACK_TIMEOUT),
+                )
+                return
+            await asyncio.sleep(JOB_POLL_INTERVAL)
+
+    def _record_print(self, job_id: int) -> None:
+        self._last_print = dt_util.utcnow()
+        self._last_print_job_id = job_id
+        for cb in list(self._print_listeners):
+            with contextlib.suppress(Exception):
+                cb()
 
     async def _status_check(self, hass: HomeAssistant) -> None:
         # CUPS printer status check via IPP (native async, no executor needed)
@@ -742,12 +873,15 @@ class EscposPrinterAdapter:
         cut: str | None = None,
         feed: int | None = None,
         apply_cut_feed: bool = True,
+        track: bool = False,
     ) -> None:
         """Build ESC/POS bytes with *build* and submit them to CUPS as one job.
 
         Creates a fresh Dummy buffer, runs the (blocking) build function in the
         executor, optionally applies trailing feed/cut, and submits the buffered
-        bytes over IPP. Marks the printer reachable on success.
+        bytes over IPP. Marks the printer reachable on success. With *track*,
+        the job is followed until CUPS reports it completed, which updates
+        ``last_print``; feed/cut/beep don't count as prints.
         """
         async with self._lock:
             printer = await hass.async_add_executor_job(self._connect)
@@ -761,6 +895,11 @@ class EscposPrinterAdapter:
                 _LOGGER.error("%s failed: %s", op_name, sanitize_log_message(str(e)))
                 raise
         self._mark_success()
+        if track:
+            if job_id:
+                self._start_job_tracking(hass, job_id)
+            else:
+                _LOGGER.debug("CUPS returned no job ID for %s; cannot confirm completion", op_name)
 
     # Operations
     async def print_text(
@@ -848,7 +987,7 @@ class EscposPrinterAdapter:
                 printer.text(text_to_print)
                 _LOGGER.debug("Text sent to buffer")
 
-        await self._run_job(hass, "print_text", _do_full_print, cut=cut, feed=feed)
+        await self._run_job(hass, "print_text", _do_full_print, cut=cut, feed=feed, track=True)
 
     async def print_qr(
         self,
@@ -886,7 +1025,7 @@ class EscposPrinterAdapter:
                 printer.set(align=align_m, invert=False)
             printer.qr(data, size=qsize, ec=_map_qr_ec(qec))
 
-        await self._run_job(hass, "print_qr", _do_print, cut=cut, feed=feed)
+        await self._run_job(hass, "print_qr", _do_print, cut=cut, feed=feed, track=True)
 
     def image_target_width(self) -> int:
         """Effective resize target: entry override → profile width → fallback."""
@@ -971,7 +1110,7 @@ class EscposPrinterAdapter:
                 # Fallback: convert to bytes via ESC/POS raster if possible
                 printer.text("[image printing not supported by this printer]\n")
 
-        await self._run_job(hass, "print_image", _do_print, cut=cut, feed=feed)
+        await self._run_job(hass, "print_image", _do_print, cut=cut, feed=feed, track=True)
 
     async def feed(self, hass: HomeAssistant, *, lines: int) -> None:
         try:
@@ -1076,7 +1215,7 @@ class EscposPrinterAdapter:
                 else:
                     raise
 
-        await self._run_job(hass, "print_barcode", _do_print, cut=cut, feed=feed)
+        await self._run_job(hass, "print_barcode", _do_print, cut=cut, feed=feed, track=True)
 
     async def beep(self, hass: HomeAssistant, *, times: int = 2, duration: int = 4) -> None:
         times_v = validate_numeric_input(times, 1, MAX_BEEP_TIMES, "times")
@@ -1095,3 +1234,51 @@ class EscposPrinterAdapter:
                 _LOGGER.warning("Printer does not support buzzer")
 
         await self._run_job(hass, "beep", _beep_inner, apply_cut_feed=False)
+
+    async def print_sample(self, hass: HomeAssistant, *, title: str, cut: str | None = "full") -> None:
+        """Print a test receipt exercising the main text options, as one CUPS job.
+
+        Includes a digit ruler at the configured line width, so a wrong width
+        setting shows up as a wrapped or short ruler line.
+        """
+        cols = max(int(self._config.line_width or 0), 16)
+        rule = "=" * cols
+        ruler = ("1234567890" * (cols // 10 + 1))[:cols]
+
+        def _build(printer: Any) -> None:
+            def style(**kwargs: Any) -> None:
+                if hasattr(printer, "set"):
+                    printer.set(**kwargs)
+
+            # Explicit baseline: earlier jobs may have left styles behind.
+            style(
+                align="center", bold=True, underline=0, invert=False,
+                custom_size=False, normal_textsize=True,
+            )
+            if hasattr(printer, "set"):
+                _apply_font(printer, "a")
+            printer.text(f"{rule}\nESC/POS SAMPLE PRINT\n")
+            style(bold=False)
+            printer.text(f"{title[:cols]}\n{rule}\n")
+            style(align="left")
+            printer.text("Normal text\n")
+            style(bold=True)
+            printer.text("Bold text\n")
+            style(bold=False, underline=1)
+            printer.text("Underlined text\n")
+            style(underline=0, invert=True)
+            printer.text(" Inverted text \n")
+            style(invert=False, custom_size=True, normal_textsize=False, width=2, height=2)
+            printer.text("Double size\n")
+            style(custom_size=False, normal_textsize=True)
+            if hasattr(printer, "set") and _apply_font(printer, "b") == "b":
+                printer.text("Font B (smaller)\n")
+                _apply_font(printer, "a")
+            printer.text(f"Line width: {cols} columns\n{ruler}\n{rule}\n")
+            style(align="center")
+            printer.qr(SAMPLE_QR_URL, size=4)
+            printer.text("Docs & source:\n")
+            printer.text(self._wrap_text(SAMPLE_QR_URL, cols) + "\n")
+            style(align="left")
+
+        await self._run_job(hass, "print_sample", _build, cut=cut, feed=2, track=True)

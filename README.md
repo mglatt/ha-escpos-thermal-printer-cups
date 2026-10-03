@@ -22,6 +22,7 @@ Connect thermal printers via CUPS and start printing in minutes.
 - Print QR codes, barcodes, and images
 - Paper feed and cut control
 - Buzzer/beeper support
+- Device page buttons (feed, cut, beep, sample print) and a Last print sensor
 - UTF-8 text with automatic character conversion
 - 35+ printer profiles with automatic feature detection
 - Full UI configuration – no YAML required
@@ -203,6 +204,21 @@ Omit `target` to broadcast to all configured printers.
 | `escpos_printer.feed` | Feed paper by number of lines |
 | `escpos_printer.cut` | Cut paper (full or partial) |
 | `escpos_printer.beep` | Sound the buzzer (if supported by printer) |
+
+## Device Page Controls and Sensors
+
+Each printer's device page has:
+
+| Entity | What it does |
+|--------|--------------|
+| **Feed paper** button | Advances 3 lines for tearing off |
+| **Cut paper** button | Cuts with the printer's default cut mode (`full` when the default is `none`) |
+| **Beep** button | Sounds the buzzer, if the printer has one |
+| **Sample print** button | Prints a test receipt: text styles, a column ruler at your configured line width, and a QR code |
+| **Online** binary sensor | Whether CUPS reports the queue as usable |
+| **Last print** sensor | When a text, QR, image, barcode or sample print last *completed* |
+
+**Last print** updates only when CUPS reports the job `completed`, which for a raw queue means every byte was delivered to the printer. Jobs that are canceled or aborted, or still pending after 2 minutes (printer offline), are logged and not counted. Feed, cut and beep don't count as prints. The value survives Home Assistant restarts. CUPS can't see the paper, so "completed" still can't tell you whether the roll ran out.
 
 ## Service Parameters
 
